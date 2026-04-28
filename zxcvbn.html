@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🌍 Environmental Dashboard Pro</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg-primary: #0f2027;
+      --bg-secondary: #121212;
+      --card-light: rgba(255,255,255,0.95);
+      --card-dark: #1e1e1e;
+      --text-light: #222;
+      --text-dark: #eee;
+      --accent: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --shadow: 0 8px 32px rgba(0,0,0,0.12);
+      --border: rgba(255,255,255,0.1);
+      --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-light);
+      line-height: 1.5;
+      transition: var(--transition);
+    }
+
+    body.dark {
+      background: var(--bg-secondary);
+      color: var(--text-dark);
+    }
+
+    header {
+      background: var(--accent);
+      color: white;
+      padding: 1.5rem;
+      text-align: center;
+      box-shadow: var(--shadow);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+
+    .controls {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+      background: var(--card-light);
+      padding: 1rem;
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+    }
+
+    body.dark .controls { background: var(--card-dark); }
+
+    .btn, select {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 500;
+      transition: var(--transition);
+      background: white;
+    }
+
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    select { min-width: 100px; }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .card {
+      background: var(--card-light);
+      padding: 1.25rem;
+      border-radius: 12px;
+      text-align: center;
+      box-shadow: var(--shadow);
+      transition: var(--transition);
+      border: 1px solid var(--border);
+    }
+
+    body.dark .card { background: var(--card-dark); }
+
+    .card:hover { transform: translateY(-4px); }
+
+    .value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #667eea;
+      margin: 0.5rem 0;
+    }
+
+    .charts {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1rem;
+    }
+
+    .chart-wrapper {
+      background: var(--card-light);
+      border-radius: 12px;
+      padding: 1.25rem;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+      height: 300px;
+    }
+
+    body.dark .chart-wrapper { background: var(--card-dark); }
+
+    canvas { max-height: 220px !important; height: 220px !important; }
+
+    @media (max-width: 768px) {
+      .controls { flex-direction: column; align-items: stretch; }
+      .btn, select { justify-content: center; }
+    }
+
+    .loading { opacity: 0.6; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><span id="themeIcon">🌍</span> Environmental Dashboard</h1>
+  </header>
+
+  <div class="container">
+    <div class="controls">
+      <select id="yearSelect">
+        <option value="2020">2020</option>
+        <option value="2021">2021</option>
+        <option value="2022" selected>2022</option>
+        <option value="2023">2023</option>
+        <option value="2024">2024</option>
+      </select>
+      <button id="themeBtn" class="btn">🌙 Dark Mode</button>
+      <button id="exportBtn" class="btn">⬇️ Export CSV</button>
+      <button id="liveBtn" class="btn">🌐 Live Data</button>
+    </div>
+
+    <div class="cards" id="cards"></div>
+
+    <div class="charts">
+      <div class="chart-wrapper">
+        <canvas id="co2Chart"></canvas>
+      </div>
+      <div class="chart-wrapper">
+        <canvas id="tempChart"></canvas>
+      </div>
+      <div class="chart-wrapper">
+        <canvas id="aqiChart"></canvas>
+      </div>
+      <div class="chart-wrapper">
+        <canvas id="forestChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ==================== CONSTANTS ====================
+    const CONFIG = {
+      DATA: {
+        2020: { co2: 33.2, temp: 1.02, aqi: 88, forest: 10.2 },
+        2021: { co2: 34.1, temp: 1.12, aqi: 91, forest: 10.8 },
+        2022: { co2: 35.8, temp: 1.18, aqi: 94, forest: 11.5 },
+        2023: { co2: 36.9, temp: 1.24, aqi: 97, forest: 12.3 },
+        2024: { co2: 37.8, temp: 1.31, aqi: 99, forest: 13.1 }
+      },
+      METRICS: ['co2', 'temp', 'aqi', 'forest'],
+      CHART_CONFIG: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { maxRotation: 45 } },
+          y: { beginAtZero: false }
+        },
+        animation: { duration: 800, easing: 'easeOutQuart' }
+      }
+    };
+
+    // ==================== STATE ====================
+    let charts = {}, currentYear = '2022', isDark = false;
+
+    // ==================== CORE FUNCTIONS ====================
+    function init() {
+      renderCards();
+      initCharts();
+      updateAll();
+      bindEvents();
+    }
+
+    function renderCards() {
+      document.getElementById('cards').innerHTML = CONFIG.METRICS.map(metric => `
+        <div class="card" data-metric="${metric}">
+          <h3>${metric.toUpperCase()}</h3>
+          <div class="value" id="${metric}-value">--</div>
+        </div>
+      `).join('');
+    }
+
+    function animateValue(id, start, end, duration = 600) {
+      const el = document.getElementById(id);
+      let startTime = null;
+
+      function step(timestamp) {
+        if (!startTime) startTime = timestamp;
+        const progress = Math.min((timestamp - startTime) / duration, 1);
+        el.textContent = (start + (end - start) * progress).toFixed(1);
+        if (progress < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    }
+
+    function updateCards(year) {
+      const data = CONFIG.DATA[year];
+      CONFIG.METRICS.forEach(metric => {
+        const prevYear = Object.keys(CONFIG.DATA)
+          .filter(y => +y < +year)
+          .pop() || year;
+        const prevValue = CONFIG.DATA[prevYear][metric];
+        animateValue(`${metric}-value`, prevValue || 0, data[metric]);
+      });
+    }
+
+    function initCharts() {
+      const canvasIds = ['co2Chart', 'tempChart', 'aqiChart', 'forestChart'];
+      const types = ['line', 'line', 'bar', 'line'];
+      const colors = ['#e74c3c', '#3498db', '#f39c12', '#27ae60'];
+
+      canvasIds.forEach((id, i) => {
+        charts[id.replace('Chart', '')] = new Chart(
+          document.getElementById(id),
+          {
+            type: types[i],
+            data: { labels: [], datasets: [] },
+            options: {
+              ...CONFIG.CHART_CONFIG,
+              scales: { 
+                ...CONFIG.CHART_CONFIG.scales,
+                y: { ...CONFIG.CHART_CONFIG.scales.y, beginAtZero: types[i] === 'bar' }
+              }
+            }
+          }
+        );
+      });
+    }
+
+    function updateCharts() {
+      const years = Object.keys(CONFIG.DATA);
+      const colors = ['#e74c3c', '#3498db', '#f39c12', '#27ae60'];
+
+      Object.entries(CONFIG.DATA).forEach(([year, data], i) => {
+        CONFIG.METRICS.forEach((metric, j) => {
+          const chart = charts[metric];
+          if (chart) {
+            chart.data.labels = years;
+            chart.data.datasets = [{
+              label: metric.toUpperCase(),
+              data: years.map(y => CONFIG.DATA[y][metric]),
+              borderColor: colors[j],
+              backgroundColor: colors[j] + '20',
+              tension: 0.4,
+              fill: metric !== 'aqi',
+              borderWidth: 2
+            }];
+            chart.update('active');
+          }
+        });
+      });
+    }
+
+    // ==================== UTILITIES ====================
+    function updateAll() {
+      document.body.classList.add('loading');
+      setTimeout(() => {
+        updateCards(currentYear);
+        updateCharts();
+        document.body.classList.remove('loading');
+      }, 300);
+    }
+
+    function exportCSV() {
+      const headers = ['Year', ...CONFIG.METRICS.map(m => m.toUpperCase())].join(',');
+      const rows = Object.entries(CONFIG.DATA).map(([year, data]) => 
+        [year, ...CONFIG.METRICS.map(m => data[m])].join(',')
+      );
+      const csv = [headers, ...rows].join('\n');
+      
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `environmental-data-${currentYear}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function fetchLiveAQI() {
+      try {
+        // Mock API response for demo (real API would need CORS proxy)
+        const mockData = { hourly: { us_aqi: Array(24).fill(95).map((v, i) => v + (Math.random() - 0.5) * 10) } };
+        const latest = mockData.hourly.us_aqi.slice(-1)[0];
+        
+        // Update AQI card in real-time
+        animateValue('aqi-value', parseFloat(document.getElementById('aqi-value').textContent), latest);
+        
+        // Show notification
+        const notif = document.createElement('div');
+        notif.textContent = `Live AQI: ${latest.toFixed(0)}`;
+        notif.style.cssText = `
+          position: fixed; top: 20px; right: 20px; background: #667eea; 
+          color: white; padding: 1rem; border-radius: 8px; 
+          box-shadow: var(--shadow); z-index: 1000; transition: var(--transition);
+        `;
+        document.body.appendChild(notif);
+        setTimeout(() => notif.remove(), 3000);
+      } catch {
+        alert('Live data unavailable');
+      }
+    }
+
+    // ==================== EVENT BINDING ====================
+    function bindEvents() {
+      document.getElementById('yearSelect').addEventListener('change', (e) => {
+        currentYear = e.target.value;
+        updateAll();
+      });
+
+      document.getElementById('themeBtn').addEventListener('click', () => {
+        isDark = !isDark;
+        document.body.classList.toggle('dark', isDark);
+        document.getElementById('themeBtn').textContent = isDark ? '☀️ Light Mode' : '🌙 Dark Mode';
+        document.getElementById('themeIcon').textContent = isDark ? '🌙' : '🌍';
+      });
+
+      document.getElementById('exportBtn').addEventListener('click', exportCSV);
+      document.getElementById('liveBtn').addEventListener('click', fetchLiveAQI);
+    }
+
+    // ==================== BOOTSTRAP ====================
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
